@@ -58,7 +58,7 @@ void UFlowSubsystem::Deinitialize()
 	AbortActiveFlows();
 }
 
-void UFlowSubsystem::AbortActiveFlows(bool bAbortGlobal)
+void UFlowSubsystem::AbortActiveFlows(const bool bAbortGlobal /* = true*/)
 {
 	for (int32 i = InstancedTemplates.Num() - 1; i >= 0; i--)
 	{

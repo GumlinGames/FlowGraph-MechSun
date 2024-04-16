@@ -14,6 +14,7 @@
 #include "Logging/MessageLog.h"
 #include "Misc/Paths.h"
 #include "UObject/UObjectHash.h"
+#include "Logging/StructuredLog.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(FlowSubsystem)
 
@@ -57,23 +58,45 @@ void UFlowSubsystem::Deinitialize()
 	AbortActiveFlows();
 }
 
-void UFlowSubsystem::AbortActiveFlows()
+void UFlowSubsystem::AbortActiveFlows(bool AbortGlobal)
 {
-	if (InstancedTemplates.Num() > 0)
+	for (int32 i = InstancedTemplates.Num() - 1; i >= 0; i--)
 	{
-		for (int32 i = InstancedTemplates.Num() - 1; i >= 0; i--)
+		auto& instance = InstancedTemplates[i];
+
+		if (IsValid(instance))
 		{
-			if (InstancedTemplates.IsValidIndex(i) && InstancedTemplates[i])
-			{
-				InstancedTemplates[i]->ClearInstances();
-			}
+			/* If this instance is not world-bound and we are not aborting global objects, skip this item. */
+			if (!(instance->bWorldBound || AbortGlobal))
+				continue;
+			
+			/* If this node is owned by a subgraph, remove that as well. */
+			if (UFlowNode_SubGraph* owning_node = Cast<UFlowNode_SubGraph>(instance->NodeOwningThisAssetInstance))
+				InstancedSubFlows.Remove(owning_node);
+			
+			instance->ClearInstances();
 		}
+		else InstancedTemplates.RemoveAt(i, 1, false);
 	}
 
-	InstancedTemplates.Empty();
-	InstancedSubFlows.Empty();
+	/* Clear Root Instances */
+	TArray<UFlowAsset*> InstancesToFinish;
+	for (auto& [asset, owner] : RootInstances)
+	{
+		if (asset->IsBoundToWorld() || AbortGlobal)
+			InstancesToFinish.Emplace(asset);
+	}
 
-	RootInstances.Empty();
+	for (UFlowAsset* InstanceToFinish : InstancesToFinish)
+	{
+		RootInstances.Remove(InstanceToFinish);
+		InstanceToFinish->FinishFlow(EFlowFinishPolicy::Keep);
+	}
+
+	//InstancedTemplates.Empty();
+	//InstancedSubFlows.Empty();
+
+	//RootInstances.Empty();
 }
 
 void UFlowSubsystem::StartRootFlow(UObject* Owner, UFlowAsset* FlowAsset, const bool bAllowMultipleInstances /* = true */)
@@ -359,7 +382,8 @@ void UFlowSubsystem::OnGameSaved(UFlowSaveGame* SaveGame)
 		// write archives to SaveGame
 		for (const TWeakObjectPtr<UFlowComponent> RegisteredComponent : RegisteredComponents)
 		{
-			SaveGame->FlowComponents.Emplace(RegisteredComponent->SaveInstance());
+			if (RegisteredComponent.IsValid())
+				SaveGame->FlowComponents.Emplace(RegisteredComponent->SaveInstance());
 		}
 	}
 }

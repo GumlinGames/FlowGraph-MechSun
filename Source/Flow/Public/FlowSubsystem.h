@@ -69,7 +69,7 @@ public:
 	virtual void Deinitialize() override;
 
 	UFUNCTION(BlueprintCallable, Category = "FlowSubsystem")
-	virtual void AbortActiveFlows();
+	virtual void AbortActiveFlows(bool AbortGlobal = true);
 
 	/* Start the root Flow, graph that will eventually instantiate next Flow Graphs through the SubGraph node */
 	UFUNCTION(BlueprintCallable, Category = "FlowSubsystem", meta = (DefaultToSelf = "Owner"))

@@ -58,7 +58,7 @@ void UFlowSubsystem::Deinitialize()
 	AbortActiveFlows();
 }
 
-void UFlowSubsystem::AbortActiveFlows(bool AbortGlobal)
+void UFlowSubsystem::AbortActiveFlows(bool bAbortGlobal)
 {
 	for (int32 i = InstancedTemplates.Num() - 1; i >= 0; i--)
 	{
@@ -66,8 +66,8 @@ void UFlowSubsystem::AbortActiveFlows(bool AbortGlobal)
 
 		if (IsValid(instance))
 		{
-			/* If this instance is not world-bound and we are not aborting global objects, skip this item. */
-			if (!(instance->bWorldBound || AbortGlobal))
+			/* Only resume removal if this instance is world-bound, or if we are aborting global flows. */
+			if (!(instance->IsBoundToWorld() || bAbortGlobal))
 				continue;
 			
 			/* If this node is owned by a subgraph, remove that as well. */
@@ -83,7 +83,7 @@ void UFlowSubsystem::AbortActiveFlows(bool AbortGlobal)
 	TArray<UFlowAsset*> InstancesToFinish;
 	for (auto& [asset, owner] : RootInstances)
 	{
-		if (asset->IsBoundToWorld() || AbortGlobal)
+		if (asset->IsBoundToWorld() || bAbortGlobal)
 			InstancesToFinish.Emplace(asset);
 	}
 
@@ -95,7 +95,6 @@ void UFlowSubsystem::AbortActiveFlows(bool AbortGlobal)
 
 	//InstancedTemplates.Empty();
 	//InstancedSubFlows.Empty();
-
 	//RootInstances.Empty();
 }
 

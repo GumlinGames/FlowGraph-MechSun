@@ -803,6 +803,7 @@ FFlowAssetSaveData UFlowAsset::SaveInstance(TArray<FFlowAssetSaveData>& SavedFlo
 	FFlowAssetSaveData AssetRecord;
 	AssetRecord.WorldName = IsBoundToWorld() ? GetWorld()->GetName() : FString();
 	AssetRecord.InstanceName = GetName();
+	AssetRecord.bIsRootAsset = NodeOwningThisAssetInstance == nullptr;
 
 	// opportunity to collect data before serializing asset
 	OnSave();

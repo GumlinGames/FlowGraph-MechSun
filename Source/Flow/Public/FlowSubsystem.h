@@ -18,6 +18,17 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FTaggedFlowComponentEvent, UFlowCom
 
 DECLARE_DELEGATE_OneParam(FNativeFlowAssetEvent, class UFlowAsset*);
 
+
+
+UENUM(BlueprintType)
+enum class EFlowCreationMethod : uint8
+{
+	WorldBoundOnly		UMETA(DisplayName = "World-bound only"),
+	GlobalOnly			UMETA(DisplayName = "Global only"),
+	All					UMETA(DisplayName = "All"),
+};
+
+
 /**
  * Flow Subsystem
  * - manages lifetime of Flow Graphs
@@ -69,7 +80,7 @@ public:
 	virtual void Deinitialize() override;
 
 	UFUNCTION(BlueprintCallable, Category = "FlowSubsystem")
-	virtual void AbortActiveFlows(const bool bAbortGlobal = true);
+	virtual void AbortActiveFlows(const EFlowCreationMethod AbortMethod = EFlowCreationMethod::All);
 
 	/* Start the root Flow, graph that will eventually instantiate next Flow Graphs through the SubGraph node */
 	UFUNCTION(BlueprintCallable, Category = "FlowSubsystem", meta = (DefaultToSelf = "Owner"))
@@ -125,11 +136,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FlowSubsystem")
 	virtual void OnGameSaved(UFlowSaveGame* SaveGame);
 
+	virtual void OnGameSaved_Ext(UFlowSaveGame* SaveGame, EFlowCreationMethod Method);
+
 	UFUNCTION(BlueprintCallable, Category = "FlowSubsystem")
 	virtual void OnGameLoaded(UFlowSaveGame* SaveGame);
 
 	UFUNCTION(BlueprintCallable, Category = "FlowSubsystem")
 	virtual void LoadRootFlow(UObject* Owner, UFlowAsset* FlowAsset, const FString& SavedAssetInstanceName);
+	virtual UFlowAsset* LoadRootFlow_Ext(UObject* Owner, UFlowAsset* FlowAsset, const FString& SavedAssetInstanceName);
 
 	UFUNCTION(BlueprintCallable, Category = "FlowSubsystem")
 	virtual void LoadSubFlow(UFlowNode_SubGraph* SubGraphNode, const FString& SavedAssetInstanceName);

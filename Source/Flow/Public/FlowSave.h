@@ -35,6 +35,9 @@ struct FLOW_API FFlowAssetSaveData
 	FString InstanceName;
 
 	UPROPERTY(SaveGame, VisibleAnywhere, Category = "Flow")
+	bool bIsRootAsset;
+
+	UPROPERTY(SaveGame, VisibleAnywhere, Category = "Flow")
 	TArray<uint8> AssetData;
 
 	UPROPERTY(SaveGame, VisibleAnywhere, Category = "Flow")

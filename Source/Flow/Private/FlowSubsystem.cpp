@@ -37,6 +37,7 @@ bool UFlowSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 	GetDerivedClasses(GetClass(), ChildClasses, false);
 	if (ChildClasses.Num() > 0)
 	{
+		UE_LOGFMT(LogFlow, Log, "Base flow subsystem ignored -- subclassed by {0} classes.", ChildClasses.Num());
 		return false;
 	}
 
@@ -58,16 +59,18 @@ void UFlowSubsystem::Deinitialize()
 	AbortActiveFlows();
 }
 
-void UFlowSubsystem::AbortActiveFlows(const bool bAbortGlobal /* = true*/)
+void UFlowSubsystem::AbortActiveFlows(const EFlowCreationMethod Method /* = EFlowCreationMethod::All */)
 {
+	const bool bAbortWorldBound = Method != EFlowCreationMethod::GlobalOnly;
+	const bool bAbortGlobal = Method != EFlowCreationMethod::WorldBoundOnly;
+
 	for (int32 i = InstancedTemplates.Num() - 1; i >= 0; i--)
 	{
 		auto& instance = InstancedTemplates[i];
 
 		if (IsValid(instance))
 		{
-			/* Only resume removal if this instance is world-bound, or if we are aborting global flows. */
-			if (!(instance->IsBoundToWorld() || bAbortGlobal))
+			if ((instance->IsBoundToWorld() && !bAbortWorldBound) || (!instance->IsBoundToWorld() && !bAbortGlobal))
 				continue;
 			
 			/* If this node is owned by a subgraph, remove that as well. */
@@ -83,7 +86,7 @@ void UFlowSubsystem::AbortActiveFlows(const bool bAbortGlobal /* = true*/)
 	TArray<UFlowAsset*> InstancesToFinish;
 	for (auto& [asset, owner] : RootInstances)
 	{
-		if (asset->IsBoundToWorld() || bAbortGlobal)
+		if ((asset->IsBoundToWorld() && bAbortWorldBound) || (!asset->IsBoundToWorld() && bAbortGlobal))
 			InstancesToFinish.Emplace(asset);
 	}
 
@@ -92,10 +95,6 @@ void UFlowSubsystem::AbortActiveFlows(const bool bAbortGlobal /* = true*/)
 		RootInstances.Remove(InstanceToFinish);
 		InstanceToFinish->FinishFlow(EFlowFinishPolicy::Keep);
 	}
-
-	//InstancedTemplates.Empty();
-	//InstancedSubFlows.Empty();
-	//RootInstances.Empty();
 }
 
 void UFlowSubsystem::StartRootFlow(UObject* Owner, UFlowAsset* FlowAsset, const bool bAllowMultipleInstances /* = true */)
@@ -387,6 +386,73 @@ void UFlowSubsystem::OnGameSaved(UFlowSaveGame* SaveGame)
 	}
 }
 
+void UFlowSubsystem::OnGameSaved_Ext(UFlowSaveGame* SaveGame, EFlowCreationMethod Method)
+{
+	// clear existing data, in case we received reused SaveGame instance
+	// we only remove data for the current world + global Flow Graph instances (i.e. not bound to any world if created by UGameInstanceSubsystem)
+	// we keep data bound to other worlds
+
+	const bool bSaveWorldBound = Method != EFlowCreationMethod::GlobalOnly;
+	const bool bSaveGlobal = Method != EFlowCreationMethod::WorldBoundOnly;
+
+	if (GetWorld())
+	{
+		const FString& WorldName = GetWorld()->GetName();
+
+		for (int32 i = SaveGame->FlowInstances.Num() - 1; i >= 0; i--)
+		{
+			if (SaveGame->FlowInstances[i].WorldName.IsEmpty() || SaveGame->FlowInstances[i].WorldName == WorldName)
+			{
+				SaveGame->FlowInstances.RemoveAt(i);
+			}
+		}
+
+		for (int32 i = SaveGame->FlowComponents.Num() - 1; i >= 0; i--)
+		{
+			if (SaveGame->FlowComponents[i].WorldName.IsEmpty() || SaveGame->FlowComponents[i].WorldName == WorldName)
+			{
+				SaveGame->FlowComponents.RemoveAt(i);
+			}
+		}
+	}
+
+	// save Flow Graphs
+	for (const TPair<UFlowAsset*, TWeakObjectPtr<UObject>>& RootInstance : RootInstances)
+	{
+		if (RootInstance.Key && RootInstance.Value.IsValid())
+		{
+			if (UFlowComponent* FlowComponent = Cast<UFlowComponent>(RootInstance.Value))
+			{
+				if (bSaveWorldBound)
+					FlowComponent->SaveRootFlow(SaveGame->FlowInstances);
+			}
+			else
+			{
+				if (bSaveGlobal)
+					RootInstance.Key->SaveInstance(SaveGame->FlowInstances);
+			}
+		}
+	}
+
+	// save Flow Components
+	if (bSaveWorldBound)
+	{
+		// retrieve all registered components
+		TArray<TWeakObjectPtr<UFlowComponent>> ComponentsArray;
+		FlowComponentRegistry.GenerateValueArray(ComponentsArray);
+
+		// ensure uniqueness of entries
+		const TSet<TWeakObjectPtr<UFlowComponent>> RegisteredComponents = TSet<TWeakObjectPtr<UFlowComponent>>(ComponentsArray);
+
+		// write archives to SaveGame
+		for (const TWeakObjectPtr<UFlowComponent> RegisteredComponent : RegisteredComponents)
+		{
+			if (RegisteredComponent.IsValid())
+				SaveGame->FlowComponents.Emplace(RegisteredComponent->SaveInstance());
+		}
+	}
+}
+
 void UFlowSubsystem::OnGameLoaded(UFlowSaveGame* SaveGame)
 {
 	LoadedSaveGame = SaveGame;
@@ -415,6 +481,30 @@ void UFlowSubsystem::LoadRootFlow(UObject* Owner, UFlowAsset* FlowAsset, const F
 			return;
 		}
 	}
+}
+
+UFlowAsset* UFlowSubsystem::LoadRootFlow_Ext(UObject* Owner, UFlowAsset* FlowAsset, const FString& SavedAssetInstanceName)
+{
+	if (FlowAsset == nullptr || SavedAssetInstanceName.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	for (const FFlowAssetSaveData& AssetRecord : LoadedSaveGame->FlowInstances)
+	{
+		if (AssetRecord.InstanceName == SavedAssetInstanceName
+			&& (FlowAsset->IsBoundToWorld() == false || AssetRecord.WorldName == GetWorld()->GetName()))
+		{
+			UFlowAsset* LoadedInstance = CreateRootFlow(Owner, FlowAsset, false);
+			if (LoadedInstance)
+			{
+				LoadedInstance->LoadInstance(AssetRecord);
+			}
+			return LoadedInstance;
+		}
+	}
+
+	return nullptr;
 }
 
 void UFlowSubsystem::LoadSubFlow(UFlowNode_SubGraph* SubGraphNode, const FString& SavedAssetInstanceName)

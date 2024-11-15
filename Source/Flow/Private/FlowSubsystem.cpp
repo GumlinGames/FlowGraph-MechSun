@@ -59,6 +59,15 @@ void UFlowSubsystem::Deinitialize()
 	AbortActiveFlows();
 }
 
+void UFlowSubsystem::Init()
+{
+	LoadedSaveGame = nullptr;
+	AbortActiveFlows();
+	InstancedTemplates.Empty();
+	RootInstances.Empty();
+	InstancedSubFlows.Empty();
+}
+
 void UFlowSubsystem::AbortActiveFlows(const EFlowCreationMethod Method /* = EFlowCreationMethod::All */)
 {
 	const bool bAbortWorldBound = Method != EFlowCreationMethod::GlobalOnly;

@@ -503,6 +503,11 @@ void UFlowGraphSchema::GatherNodes()
 		return;
 	}
 
+	if (GCompilingBlueprint)
+	{
+		return;
+	}
+
 	bInitialGatherPerformed = true;
 
 	GatherNativeNodes();
